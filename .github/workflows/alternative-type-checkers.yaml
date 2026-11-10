@@ -23,13 +23,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                component: [package, scripts, tests]
                 python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
-                exclude:  # yamllint disable-line rule:key-ordering
-                    - component: scripts
-                include:  # yamllint disable-line rule:key-ordering
-                    - component: scripts
-                      python-version: ""
 
         steps:
             - uses: actions/checkout@v7
@@ -37,66 +31,31 @@ jobs:
                 persist-credentials: false
                 submodules: true
 
-            - if: matrix.component == 'package' || matrix.component == 'tests'
-              name: Set up Python (using matrix version)
+            - name: Set up Python (using matrix version)
               uses: actions/setup-python@v7
               with:
                 python-version: ${{matrix.python-version}}
 
-            - if: matrix.component == 'scripts'
-              name: Set up Python (using `.python-version` file)
-              uses: actions/setup-python@v7
-              with:
-                python-version-file: .python-version
-
-            - if: matrix.component == 'package' || matrix.component == 'tests'
-              name: Install uv (with matrix Python version)
+            - name: Install uv (with matrix Python version)
               uses: astral-sh/setup-uv@v10.3.3
               with:
                 enable-cache: true
                 python-version: ${{matrix.python-version}}
-
-            - if: matrix.component == 'scripts'
-              name: Install uv (with `.python-version` file)
-              uses: astral-sh/setup-uv@v10.3.3
-              with:
-                enable-cache: true
 
             - name: Install Pyrefly from locked dependencies
-              run: |  # zizmor: ignore[template-injection]
-                if [ "${{matrix.component}}" == "package" ]; then
-                    ARGS=("--no-group" "dev" "--group" "alternative-type-checkers")
-                elif [ "${{matrix.component}}" == "scripts" ]; then
-                    ARGS=("--only-group" "alternative-type-checkers" "--only-group" "build-dev")
-                elif [ "${{matrix.component}}" == "tests" ]; then
-                    ARGS=("--no-group" "dev" "--group" "alternative-type-checkers" "--group" "test")
-                else
-                    echo "Error: Unknown matrix.component value: '${{matrix.component}}'" >&2
-                    exit 1
-                fi
-
-                uv sync "${ARGS[@]}"
+              run: uv sync --no-group dev --group alternative-type-checkers --group test
 
             - name: Run Pyrefly
-              run: |  # zizmor: ignore[template-injection]
-                if [ "${{matrix.component}}" == "package" ]; then
-                    FILES=("typed_classproperties/")
-                elif [ "${{matrix.component}}" == "scripts" ]; then
-                    FILES=("hatch_build.custom.py")
-                elif [ "${{matrix.component}}" == "tests" ]; then
-                    FILES=("tests.py")
-                else
-                    echo "Error: Unknown matrix.component value: '${{matrix.component}}'" >&2
-                    exit 1
-                fi
-
-                for FILE in "${FILES[@]}"; do
-                  uv run -- pyrefly check "$FILE"
-                done
+              run: uv run -- pyrefly check tests.py
 
     pyright:
         name: Type-check code with Pyright
         runs-on: ubuntu-latest
+
+        strategy:
+            fail-fast: false
+            matrix:
+                python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
 
         steps:
             - uses: actions/checkout@v7
@@ -105,3 +64,6 @@ jobs:
                 submodules: true
 
             - uses: jakebailey/pyright-action@v3
+              with:
+                python-version: ${{matrix.python-version}}
+                extra-args: tests.py

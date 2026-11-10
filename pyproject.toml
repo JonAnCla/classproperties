@@ -40,7 +40,7 @@ dev = [
     { include-group = "test" },
     { include-group = "type-check" },
 ]
-alternative-type-checkers = ["pyrefly", "ty"]
+alternative-type-checkers = ["pyrefly"]
 build-dev = ["hatchling"]
 lint-format = [
     "flake8-carrot>=0.1.2; python_version >= '3.14'",
@@ -50,7 +50,7 @@ lint-format = [
 package-analysis = ["pyroma>=5.0"]
 pre-commit = ["prek>=0.5.3"]
 test = ["pytest>=9"]
-type-check = ["mypy>=2.4", "ty>=0.0.27,<0.0.60"]
+type-check = ["mypy>=2.4", "ty>=0.0.99"]
 
 [build-system]
 requires = [
@@ -62,9 +62,9 @@ requires = [
 build-backend = "hatchling.build"
 
 [tool.flake8]
-ignore = ["CAR110"]
+ignore = ["CAR110", "CAR163"]
 select = ["CAR"]
-extend_exclude = [".venv/", "local/"]
+extend_exclude = [".venv/", "local/", ".vendor", "hatch_build.custom.py"]
 require_plugins = ["flake8-carrot"]
 
 [tool.hatch.build]
@@ -107,6 +107,7 @@ enable_error_code = [
     "truthy-iterable",
     "unused-awaitable",
 ]
+exclude = [".vendor/", "hatch_build.custom.py"]
 extra_checks = true
 local_partial_types = true
 no_implicit_reexport = true
@@ -128,6 +129,7 @@ strict = true
 indent-width = 4
 line-length = 95
 output-format = "concise"
+extend-exclude = [".vendor", "hatch_build.custom.py"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -142,6 +144,7 @@ ignore = [
     "COM812",
     "COM819",
     "CPY",
+    "D107",
     "D206",
     "D212",
     "FA",
@@ -220,6 +223,29 @@ keep-runtime-typing = true
 [tool.tombi.format.rules]
 indent-width = 4
 line-width = 95
+
+[tool.ty.src]
+exclude = [".vendor/", "hatch_build.custom.py"]
+
+[tool.ty.rules]
+blanket-ignore-comment = "error"
+disjoint-cast = "error"
+division-by-zero = "error"
+dynamic-function-decorator-return = "error"
+mismatched-sentinel-name = "warn"
+missing-direct-dependency = "error"
+missing-override-decorator = "error"
+missing-type-argument = "error"
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+possibly-unresolved-reference = "error"
+redundant-cast = "error"
+redundant-condition-strict = "error"
+unsound-assignment = "error"
+unsound-return-statement = "error"
+unsound-yield = "error"
+unsupported-dynamic-base = "error"
+unused-ignore-comment = "error"
 
 [tool.uv]
 default-groups = ["dev"]

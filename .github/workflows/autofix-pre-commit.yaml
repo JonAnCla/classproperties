@@ -69,17 +69,17 @@ jobs:
               env:  # yamllint disable-line rule:key-ordering
                 CURRENT_BRANCH_NAME: ${{github.ref_name}}
                 DEFAULT_BRANCH_NAME: ${{github.event.repository.default_branch}}
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                GITHUB_EVENT_NAME: ${{github.event_name}}
               run: |  # zizmor: ignore[template-injection]
                 set -o pipefail
 
-                if [ "${{github.event_name}}" == "push" ] && [ "${CURRENT_BRANCH_NAME}" == "${DEFAULT_BRANCH_NAME}" ]; then
+                if [ "$GITHUB_EVENT_NAME" == "push" ] && [ "$CURRENT_BRANCH_NAME" == "$DEFAULT_BRANCH_NAME" ]; then
                     ARGS=("--skip" "gitlint-ci")
                 else
                     ARGS=()
                 fi
 
-                uv run -- prek run --all-files --hook-stage manual --color never --skip flake8 --skip ruff-check --skip uv-lock "${ARGS[@]}" | tee /tmp/prek.log
+                uv run -- prek run --all-files --hook-stage manual --color never --skip flake8 --skip ruff-check --skip ty --skip uv-lock "${ARGS[@]}" | tee /tmp/prek.log
 
             - name: Ensure no warnings
               run: "if grep -q '^warning: ' /tmp/prek.log; then exit 1; fi"

@@ -79,13 +79,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                component: [package, scripts, tests]
                 python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
-                exclude:  # yamllint disable-line rule:key-ordering
-                    - component: scripts
-                include:  # yamllint disable-line rule:key-ordering
-                    - component: scripts
-                      python-version: ""
 
         steps:
             - uses: actions/checkout@v7
@@ -93,30 +87,18 @@ jobs:
                 persist-credentials: false
                 submodules: true
 
-            - name: Set up Python (using `.python-version` file)
+            - name: Set up Python
               uses: actions/setup-python@v7
               with:
                 python-version-file: .python-version
 
-            - name: Install uv (with `.python-version` file)
+            - name: Install uv
               uses: astral-sh/setup-uv@v10.3.3
               with:
                 enable-cache: true
 
             - name: Install mypy from locked dependencies
-              run: |  # zizmor: ignore[template-injection]
-                if [ "${{matrix.component}}" == "package" ]; then
-                    ARGS=("--no-group" "dev" "--group" "type-check")
-                elif [ "${{matrix.component}}" == "scripts" ]; then
-                    ARGS=("--only-group" "type-check" "--only-group" "build-dev")
-                elif [ "${{matrix.component}}" == "tests" ]; then
-                    ARGS=("--no-group" "dev" "--group" "type-check" "--group" "test")
-                else
-                    echo "Error: Unknown matrix.component value: '${{matrix.component}}'" >&2
-                    exit 1
-                fi
-
-                uv sync "${ARGS[@]}"
+              run: uv sync --no-group dev --group type-check --group test
 
             - id: store-hashed-python-version
               name: Store hashed Python version
@@ -125,100 +107,13 @@ jobs:
 
             - uses: actions/cache@v6
               with:
-                key: mypy|${{steps.store-hashed-python-version.outputs.hashed_python_version}}|${{matrix.component}}
+                key: mypy|${{steps.store-hashed-python-version.outputs.hashed_python_version}}
                 path: ./.mypy_cache
 
             - name: Run mypy
-              run: |  # zizmor: ignore[template-injection]
-                if [ "${{matrix.component}}" == "package" ]; then
-                    FILES=("typed_classproperties/")
-                    ARGS=("--python-version" "${{matrix.python-version}}")
-                elif [ "${{matrix.component}}" == "scripts" ]; then
-                    FILES=("hatch_build.custom.py")
-                    ARGS=()
-                elif [ "${{matrix.component}}" == "tests" ]; then
-                    FILES=("tests.py")
-                    ARGS=("--python-version" "${{matrix.python-version}}")
-                else
-                    echo "Error: Unknown matrix.component value: '${{matrix.component}}'" >&2
-                    exit 1
-                fi
-
-                for FILE in "${FILES[@]}"; do
-                  uv run -- mypy "$FILE" "${ARGS[@]}"
-                done
-
-    ty:  # yamllint disable-line rule:key-ordering
-        env:
-            SKIP_MISSING_DOWNDOC: "True"
-            UV_FROZEN: "true"
-            UV_NO_SYNC: "true"
-            UV_PYTHON_DOWNLOADS: never
-        name: Type-check code with ty
-        needs: [uv-check]
-        runs-on: ubuntu-latest
-
-        strategy:
-            fail-fast: false
-            matrix:
-                component: [package, scripts, tests]
-                python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
-                exclude:  # yamllint disable-line rule:key-ordering
-                    - component: scripts
-                include:  # yamllint disable-line rule:key-ordering
-                    - component: scripts
-                      python-version: "3.15"
-
-        steps:
-            - uses: actions/checkout@v7
-              with:
-                persist-credentials: false
-                submodules: true
-
-            - name: Set up Python (using `.python-version` file)
-              uses: actions/setup-python@v7
-              with:
-                python-version-file: .python-version
-
-            - name: Install uv (with `.python-version` file)
-              uses: astral-sh/setup-uv@v10.3.3
-              with:
-                enable-cache: true
-
-            - name: Install ty from locked dependencies
-              run: |  # zizmor: ignore[template-injection]
-                if [ "${{matrix.component}}" == "package" ]; then
-                    ARGS=("--no-group" "dev" "--group" "type-check")
-                elif [ "${{matrix.component}}" == "scripts" ]; then
-                    ARGS=("--only-group" "type-check" "--only-group" "build-dev")
-                elif [ "${{matrix.component}}" == "tests" ]; then
-                    ARGS=("--no-group" "dev" "--group" "type-check" "--group" "test")
-                else
-                    echo "Error: Unknown matrix.component value: '${{matrix.component}}'" >&2
-                    exit 1
-                fi
-
-                uv sync "${ARGS[@]}"
-
-            - name: Run ty check
-              run: |  # zizmor: ignore[template-injection]
-                if [ "${{matrix.component}}" == "package" ]; then
-                    FILES=("typed_classproperties/")
-                elif [ "${{matrix.component}}" == "scripts" ]; then
-                    FILES=("hatch_build.custom.py")
-                elif [ "${{matrix.component}}" == "tests" ]; then
-                    FILES=("tests.py")
-                else
-                    echo "Error: Unknown matrix.component value: '${{matrix.component}}'" >&2
-                    exit 1
-                fi
-
-                for FILE in "${FILES[@]}"; do
-                  uv run -- ty check "$FILE" \
-                  --output-format=github \
-                  --error-on-warning \
-                  --python-version "${{matrix.python-version}}"
-                done
+              env:  # yamllint disable-line rule:key-ordering
+                MATRIX_PYTHON_VERSION: ${{matrix.python-version}}
+              run: uv run -- mypy tests.py --python-version "$MATRIX_PYTHON_VERSION"
 
     pre-commit-PUSH:  # yamllint disable-line rule:key-ordering
         if: github.event_name != 'pull_request'
@@ -336,6 +231,73 @@ jobs:
             - name: Run ruff check
               run: uv run -- ruff check --no-fix --output-format=github
 
+    ty:  # yamllint disable-line rule:key-ordering
+        env:
+            SKIP_MISSING_DOWNDOC: "True"
+            UV_FROZEN: "true"
+            UV_NO_SYNC: "true"
+            UV_PYTHON_DOWNLOADS: never
+        name: Type-check code with ty
+        needs: [uv-check]
+        runs-on: ubuntu-latest
+
+        strategy:
+            fail-fast: false
+            matrix:
+                component: [package, scripts, tests]
+
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                persist-credentials: false
+                submodules: true
+
+            - name: Set up Python
+              uses: actions/setup-python@v7
+              with:
+                python-version-file: .python-version
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v10.3.3
+              with:
+                enable-cache: true
+
+            - name: Install ty from locked dependencies
+              env:  # yamllint disable-line rule:key-ordering
+                MATRIX_COMPONENT: ${{matrix.component}}
+              run: |
+                if [ "$MATRIX_COMPONENT" == "package" ]; then
+                    ARGS=("--no-group" "dev" "--group" "type-check")
+                elif [ "$MATRIX_COMPONENT" == "scripts" ]; then
+                    ARGS=("--only-group" "type-check" "--only-group" "build-dev")
+                elif [ "$MATRIX_COMPONENT" == "tests" ]; then
+                    ARGS=("--no-group" "dev" "--group" "type-check" "--group" "test")
+                else
+                    echo "Error: Unknown matrix.component value: '$MATRIX_COMPONENT'" >&2
+                    exit 1
+                fi
+
+                uv sync "${ARGS[@]}"
+
+            - name: Run ty check
+              env:  # yamllint disable-line rule:key-ordering
+                MATRIX_COMPONENT: ${{matrix.component}}
+              run: |
+                if [ "$MATRIX_COMPONENT" == "package" ]; then
+                    FILES=("typed_classproperties/")
+                    ARGS=()
+                elif [ "$MATRIX_COMPONENT" == "scripts" ]; then
+                    FILES=("hatch_build.custom.py")
+                    ARGS=("--python-version" "$(< .python-version)")
+                elif [ "$MATRIX_COMPONENT" == "tests" ]; then
+                    FILES=("tests.py")
+                else
+                    echo "Error: Unknown matrix.component value: '$MATRIX_COMPONENT'" >&2
+                    exit 1
+                fi
+
+                uv run -- ty check "${FILES[@]}" "${ARGS[@]}" --output-format=github
+
     build:  # yamllint disable-line rule:key-ordering
         env:
             SKIP_MISSING_DOWNDOC: "False"
@@ -353,10 +315,11 @@ jobs:
             )
             && needs.pytest.result == 'success'
             && needs.ruff-lint.result == 'success'
+            && needs.ty.result == 'success'
             && needs.uv-check.result == 'success'
 
         name: Build `typed_classproperties` package
-        needs: [flake8, mypy, pre-commit-PUSH, pre-commit-PULL_REQUEST, pytest, ruff-lint, uv-check]
+        needs: [flake8, mypy, pre-commit-PUSH, pre-commit-PULL_REQUEST, pytest, ruff-lint, ty, uv-check]
         runs-on: ubuntu-latest
 
         steps:
@@ -484,6 +447,6 @@ jobs:
                 GITHUB_TOKEN: ${{github.token}}
                 RELEASE_REPOSITORY: ${{github.repository}}
                 RELEASE_TAG: ${{github.ref_name}}
-              run: gh release create "${RELEASE_TAG}" dist/** --repo "${RELEASE_REPOSITORY}" --verify-tag
+              run: gh release create "$RELEASE_TAG" dist/** --repo "$RELEASE_REPOSITORY" --verify-tag
                 --generate-notes --notes "$(git tag -l --format='%(contents:subject)%0a%0a%(contents:body)'
-                "${RELEASE_TAG}")"
+                "$RELEASE_TAG")"

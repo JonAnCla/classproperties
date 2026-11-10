@@ -1,6 +1,6 @@
 """Typed decorators for classproperty and cached_classproperty."""
 
-__all__: "Sequence[str]" = ("cached_classproperty", "classproperty")
+__all__: "Sequence[str]" = ("cached_classproperty", "classproperty", "protect_classproperties")
 
 import functools
 import sys
@@ -12,29 +12,46 @@ else:
     from typing_extensions import override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-    from typing import Final
+    from collections.abc import Callable, Iterable, MutableMapping, Sequence
+    from typing import Final, Literal, NoReturn
 
     from typing_extensions import Self
 
 
+T = TypeVar("T")
 T_class = TypeVar("T_class")
 T_value = TypeVar("T_value")
 
 
-class classproperty(property, Generic[T_value]):
+class _ClassPropertyBase:
+    @classmethod
+    def _raise_bad_descriptor_error(
+        cls,
+        property_name: str | None,
+        owner_name: str | None,
+        descriptor_type: "Literal['setter', 'deleter']",
+    ) -> "NoReturn":
+        BAD_DESCRIPTOR_MESSAGE: Final[str] = (
+            f"{cls.__name__}"
+            f"{f' {property_name!r}' if property_name is not None else ''}"
+            f"{f' of {owner_name!r} object' if owner_name is not None else ''}"
+            f" has no {descriptor_type}"
+        )
+        raise AttributeError(BAD_DESCRIPTOR_MESSAGE)
+
+
+class classproperty(_ClassPropertyBase, property, Generic[T_value]):
     """
     Decorator for a Class-level property.
 
     Credit to Denis Rhyzhkov on Stackoverflow: https://stackoverflow.com/a/13624858/1280629
     """
 
-    @override
-    def __init__(self, func: "Callable[..., T_value]", /) -> None:  # type: ignore[explicit-any]  # noqa: CAR123
+    def __init__(self, func: "Callable[..., T_value]", /) -> None:  # type: ignore[explicit-any]
         """Initialise the classproperty object."""
         super().__init__(func)
 
-    @overload  # type: ignore[override]  # noqa: CAR123
+    @overload  # type: ignore[override]
     def __get__(self, owner_self: None, owner_cls: type, /) -> T_value: ...
 
     @overload
@@ -49,9 +66,25 @@ class classproperty(property, Generic[T_value]):
 
         return cast("T_value", self.fget(owner_cls))
 
+    @override
+    def __set__(self, obj: object, value: object, /) -> None:
+        self._raise_bad_descriptor_error(
+            property_name=getattr(self.fget, "__name__", None),
+            owner_name=type(obj).__qualname__ if obj is not None else None,
+            descriptor_type="setter",
+        )
+
+    @override
+    def __delete__(self, obj: object, /) -> None:
+        self._raise_bad_descriptor_error(
+            property_name=getattr(self.fget, "__name__", None),
+            owner_name=type(obj).__qualname__ if obj is not None else None,
+            descriptor_type="deleter",
+        )
+
 
 class cached_classproperty(
-    functools.cached_property[T_value], Generic[T_class, T_value]
+    _ClassPropertyBase, functools.cached_property[T_value], Generic[T_class, T_value]
 ):  # NOTE: inherits lock and __set_name__ logic from functools.cached_property
     """
     Decorator for a Class-level property whose results are cached.
@@ -72,6 +105,10 @@ class cached_classproperty(
     as this will completely remove the cached value and the cached property setter.
     """
 
+    def __init__(self, func: "Callable[..., T_value]", /) -> None:  # type: ignore[explicit-any]
+        super().__init__(func)
+        self._cache: dict[type, T_value] = {}
+
     @override
     def __set_name__(self, owner: type, name: str, /) -> None:  # ty: ignore[invalid-method-override]
         """Store the lookup key of the cached-classproperty."""
@@ -87,13 +124,11 @@ class cached_classproperty(
             raise RuntimeError
 
         # NOTE: We must check if another thread filled the cache while we awaited lock
-        attrval: Self | T_value = owner.__dict__[self.attrname]
-
-        if attrval is not self:
-            return attrval
+        if owner in self._cache:
+            return self._cache[owner]
 
         val = self.func(owner)
-        setattr(owner, self.attrname, val)  # NOTE: This overwrites this property on the class
+        self._cache[owner] = val
         getattr(owner, "_original_cached_classproperties")[self.attrname] = self  # noqa: B009
 
         return val
@@ -114,17 +149,17 @@ class cached_classproperty(
             )
             raise TypeError(NO_NAME_SET_MESSAGE)
 
+        if owner is None:
+            owner = type(instance)
+
         if sys.version_info >= (3, 12):
-            unlocked_cached_property: Self | T_value = self._get_cached_property(owner)
-            return unlocked_cached_property
+            return self._get_cached_property(owner)
 
-        with getattr(self, "lock"):  # type: ignore[unreachable, unused-ignore] # noqa: B009, CAR123
-            locked_cached_property: Self | T_value = self._get_cached_property(owner)
-
-        return locked_cached_property
+        with getattr(self, "lock"):  # noqa: B009
+            return self._get_cached_property(owner)
 
     @classmethod
-    def remove_cached_value(cls, cls_with_cache: object, name: str) -> None:
+    def remove_cached_value(cls, cls_with_cache: type, name: str) -> None:
         """
         Remove a cached value generated by a cached_classproperty.
 
@@ -146,8 +181,79 @@ class cached_classproperty(
             )
             raise TypeError(NO_CLASS_PROPERTY_MESSAGE)
 
-        setattr(
-            cls_with_cache,
-            name,
-            cast("dict[str, object]", cls_with_cache._original_cached_classproperties)[name],
+        props: dict[str, object] = cast(
+            "dict[str, object]", cls_with_cache._original_cached_classproperties
         )
+        if name in props and isinstance(props[name], cached_classproperty):
+            class_cache: dict[type, T_value] = cast(  # noqa: SLF001
+                "cached_classproperty[T_class, T_value]", props[name]
+            )._cache
+            if cls_with_cache in class_cache:
+                del class_cache[cls_with_cache]
+                return
+
+    @override
+    def __set__(self, obj: object, value: object, /) -> None:  # ty: ignore[invalid-method-override]
+        self._raise_bad_descriptor_error(
+            property_name=getattr(self, "attrname", None),
+            owner_name=type(obj).__qualname__ if obj is not None else None,
+            descriptor_type="setter",
+        )
+
+    def __delete__(self, obj: object, /) -> None:  # noqa: D105
+        self._raise_bad_descriptor_error(
+            property_name=getattr(self, "attrname", None),
+            owner_name=type(obj).__qualname__ if obj is not None else None,
+            descriptor_type="deleter",
+        )
+
+
+class _ProtectedClassPropertiesMeta(type):
+    @override
+    def __setattr__(cls, name: str, value: object, /) -> None:
+        base: type
+        for base in cls.__mro__:
+            if name in base.__dict__ and isinstance(
+                base.__dict__[name], (classproperty, cached_classproperty)
+            ):
+                base.__dict__[name]._raise_bad_descriptor_error(  # noqa: SLF001
+                    property_name=name, owner_name=cls.__name__, descriptor_type="setter"
+                )
+
+        super().__setattr__(name, value)
+
+    @override
+    def __delattr__(cls, name: str, /) -> None:
+        base: type
+        for base in cls.__mro__:
+            if name in base.__dict__ and isinstance(
+                base.__dict__[name], (classproperty, cached_classproperty)
+            ):
+                base.__dict__[name]._raise_bad_descriptor_error(  # noqa: SLF001
+                    property_name=name, owner_name=cls.__name__, descriptor_type="deleter"
+                )
+
+        super().__delattr__(name)
+
+    @classmethod
+    def _merge_with_existing_meta(cls, existing_meta: type) -> type:
+        if existing_meta is type:
+            return cls
+
+        if issubclass(existing_meta, cls):
+            return existing_meta
+
+        return type(f"Protected_{existing_meta.__name__}", (existing_meta, cls), {})  # ty: ignore[unsupported-dynamic-base]
+
+
+def protect_classproperties(cls: type[T]) -> type[T]:
+    """Enforce protection on classproperties accessed from class objects directly."""
+    cls_dict: MutableMapping[str, object] = dict(cls.__dict__)
+    slot: str
+    for slot in cast("Iterable[str]", cls.__dict__.get("__slots__", ())):
+        cls_dict.pop(slot, None)
+
+    meta: type = _ProtectedClassPropertiesMeta._merge_with_existing_meta(cls.__class__)  # type: ignore[arg-type] # noqa: SLF001
+    cls_dict["__wrapped__"] = cls
+
+    return cast("type[T]", meta(cls.__name__, cls.__bases__, cls_dict))

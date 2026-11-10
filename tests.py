@@ -1,53 +1,68 @@
 """Full test suite for 'typed_classproperties' library."""
 
 __all__: "Sequence[str]" = ("TestCachedClassProperty", "TestClassProperty")
-__lazy_modules__: "Sequence[str]" = ("typed_classproperties",)
+__lazy_modules__: "Sequence[str]" = ("pytest",)
 
 import abc
 import sys
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
 
-from typed_classproperties import cached_classproperty, classproperty
+import pytest
+
+from typed_classproperties import cached_classproperty, classproperty, protect_classproperties
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import ClassVar
+
+    if sys.version_info >= (3, 12):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
 
-T_class = TypeVar("T_class")
+T_class = TypeVar("T_class", covariant=True)  # noqa: PLC0105
 T_func = TypeVar("T_func")
 
 
-class Holder(Protocol[T_class]):
-    cached_prop_exec_count: int
-    HELD_VALUE: T_class
-    CACHED_HELD_VALUE: T_class
+class Holder(Protocol[T_class]):  # ty: ignore[invalid-protocol]
+    cached_prop_exec_count: "ClassVar[int]"
+
+    @classproperty
+    def HELD_VALUE(cls: type["Self"]) -> T_class:  # noqa: N802
+        ...
+
+    @cached_classproperty
+    def CACHED_HELD_VALUE(cls: type["Self"]) -> T_class:  # noqa: N802
+        ...
 
 
 class BaseTestClassProperty(abc.ABC):  # noqa: B024
     """Abstract base class for all test classes."""
 
     @classmethod
-    def _get_cls_definition(cls, test_value: "T_func") -> "type[Holder[T_func]]":
-        class _HolderClass(Holder["T_func"]):  # ty: ignore[shadowed-type-variable] # noqa: CAR160
+    def _get_cls_definition(cls, test_value: T_func) -> type[Holder[T_func]]:
+        @protect_classproperties
+        class _HolderClass(Holder[object]):  # noqa: CAR160
             cached_prop_exec_count = 0
 
             @classproperty
             @override
-            def HELD_VALUE(cls) -> "T_func":
+            def HELD_VALUE(cls: type["Self"]) -> T_func:
                 return test_value
 
             @cached_classproperty
             @override
-            def CACHED_HELD_VALUE(cls) -> "T_func":
+            def CACHED_HELD_VALUE(cls: type["Self"]) -> T_func:
                 cls.cached_prop_exec_count += 1
                 return test_value
 
-        return _HolderClass
+        return cast("type[Holder[T_func]]", _HolderClass)
 
 
 class TestClassProperty(BaseTestClassProperty):
@@ -55,7 +70,7 @@ class TestClassProperty(BaseTestClassProperty):
 
     def test_classproperty_class(self) -> None:
         """Test that a classproperty correctly returns its value from a class."""
-        assert self._get_cls_definition(1000).HELD_VALUE == 1000
+        assert self._get_cls_definition(1000).HELD_VALUE == 1000  # ty: ignore[unresolved-attribute]
 
     def test_classproperty_instance(self) -> None:
         """Test that a classproperty correctly returns its value from an instance."""
@@ -76,6 +91,20 @@ class TestClassProperty(BaseTestClassProperty):
             def MY_PROPERTY(cls) -> str:
                 return ""
 
+    def test_classproperty_not_writeable_on_class(self) -> None:
+        """Test that a classproperty cannot be overwritten on a class."""
+        holder_class: type[Holder[int]] = self._get_cls_definition(3000)
+
+        with pytest.raises(AttributeError, match=r"\Aclassproperty '.+ has no setter\Z"):
+            holder_class.HELD_VALUE = 4000  # type: ignore[ty:invalid-assignment]
+
+    def test_classproperty_not_writeable_on_instance(self) -> None:
+        """Test that a classproperty cannot be overwritten on a class."""
+        holder_instance: Holder[int] = self._get_cls_definition(3000)()
+
+        with pytest.raises(AttributeError, match=r"\Aclassproperty '.+ has no setter\Z"):
+            holder_instance.HELD_VALUE = 4000
+
 
 class TestCachedClassProperty(BaseTestClassProperty):
     """Test the `cached_classproperty` decorator."""
@@ -84,14 +113,14 @@ class TestCachedClassProperty(BaseTestClassProperty):
         """Test that a `cached_classproperty` correctly returns its value from a class."""
         created_class: type[Holder[int]] = self._get_cls_definition(3000)
         assert created_class.cached_prop_exec_count == 0
-        assert created_class.CACHED_HELD_VALUE == 3000
+        assert created_class.CACHED_HELD_VALUE == 3000  # ty: ignore[unresolved-attribute]
         assert created_class.cached_prop_exec_count == 1
 
     def test_cached_classproperty_executed_once(self) -> None:
         """Test that a `cached_classproperty` correctly returns the cached value."""
         created_class: type[Holder[int]] = self._get_cls_definition(4000)
         assert created_class.cached_prop_exec_count == 0
-        assert created_class.CACHED_HELD_VALUE == 4000
+        assert created_class.CACHED_HELD_VALUE == 4000  # ty: ignore[unresolved-attribute]
         assert created_class.cached_prop_exec_count == 1
         assert created_class.CACHED_HELD_VALUE == 4000
         assert created_class.cached_prop_exec_count == 1
@@ -100,7 +129,7 @@ class TestCachedClassProperty(BaseTestClassProperty):
         """Test that removing a `cached_classproperty`'s cached value functions correctly."""
         created_class: type[Holder[int]] = self._get_cls_definition(5000)
         assert created_class.cached_prop_exec_count == 0
-        assert created_class.CACHED_HELD_VALUE == 5000
+        assert created_class.CACHED_HELD_VALUE == 5000  # ty: ignore[unresolved-attribute]
         assert created_class.cached_prop_exec_count == 1
         cached_classproperty.remove_cached_value(created_class, "CACHED_HELD_VALUE")
         assert created_class.CACHED_HELD_VALUE == 5000
@@ -112,21 +141,6 @@ class TestCachedClassProperty(BaseTestClassProperty):
         assert created_instance.cached_prop_exec_count == 0
         assert created_instance.CACHED_HELD_VALUE == 6000
         assert created_instance.cached_prop_exec_count == 1
-
-    def test_cached_classproperty_instance_with_deletion(self) -> None:
-        """Test that a `cached_classproperty` can delete its cached value from an instance."""
-        created_class: type[Holder[int]] = self._get_cls_definition(7000)
-        created_instance: Holder[int] = created_class()
-        assert created_instance.cached_prop_exec_count == 0
-        assert created_instance.CACHED_HELD_VALUE == 7000
-
-        created_instance.CACHED_HELD_VALUE = 750
-        assert created_class.CACHED_HELD_VALUE == 7000
-        assert created_instance.CACHED_HELD_VALUE == 750
-
-        del created_instance.CACHED_HELD_VALUE
-        assert created_class.CACHED_HELD_VALUE == 7000
-        assert created_class.cached_prop_exec_count == 1
 
     def test_cached_classproperty_executed_once_instance(self) -> None:
         """Test that a `cached_classproperty` returns its value from an instance only once."""
@@ -157,3 +171,21 @@ class TestCachedClassProperty(BaseTestClassProperty):
         assert created_instance.cached_prop_exec_count == 1
         assert created_instance.CACHED_HELD_VALUE == 9000
         assert created_instance.cached_prop_exec_count == 1
+
+    def test_cached_classproperty_not_writeable_on_class(self) -> None:
+        """Test that a cached_classproperty cannot be overwritten on a class."""
+        holder_class: type[Holder[int]] = self._get_cls_definition(3000)
+
+        with pytest.raises(
+            AttributeError, match=r"\Acached_classproperty '.+ has no setter\Z"
+        ):
+            holder_class.CACHED_HELD_VALUE = 4000  # type: ignore[ty:invalid-assignment]
+
+    def test_classproperty_not_writeable_on_instance(self) -> None:
+        """Test that a classproperty cannot be overwritten on a class."""
+        holder_instance: Holder[int] = self._get_cls_definition(3000)()
+
+        with pytest.raises(
+            AttributeError, match=r"\Acached_classproperty '.+ has no setter\Z"
+        ):
+            holder_instance.CACHED_HELD_VALUE = 4000  # ty: ignore[invalid-assignment]

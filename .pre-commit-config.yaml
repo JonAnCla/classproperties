@@ -5,7 +5,7 @@ default_stages: [pre-commit, pre-merge-commit, manual]
 
 repos:
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.13.5
+      rev: 0.13.7
       hooks:
         - id: uv-lock
         - id: uv-audit
@@ -21,7 +21,7 @@ repos:
         - id: codespell
 
     - repo: https://github.com/tombi-toml/tombi-pre-commit
-      rev: v1.9.0
+      rev: v1.11.1
       hooks:
         - exclude: \A.+\.lock\Z
           id: tombi-format
@@ -40,7 +40,7 @@ repos:
           args: [-pyflakes=]
 
     - repo: https://github.com/zizmorcore/zizmor-pre-commit
-      rev: v1.31.1
+      rev: v1.32.0
       hooks:
         - id: zizmor
           args: [--no-progress, --fix, --persona=auditor]
@@ -52,13 +52,13 @@ repos:
           args: [--strict]
 
     - repo: https://github.com/renovatebot/pre-commit-hooks
-      rev: 44.176.3
+      rev: 44.224.1
       hooks:
         - id: renovate-config-validator
           args: [--strict]
 
     - repo: https://github.com/python-jsonschema/check-jsonschema
-      rev: 0.38.2
+      rev: 0.39.0
       hooks:
         - id: check-jsonschema
           args: [--schemafile, 'https://json.schemastore.org/yamllint.json']  # yamllint disable-line rule:quoted-strings
@@ -129,6 +129,12 @@ repos:
         - id: ruff-check
           args: [--fix]
         - id: ruff-format
+
+    - repo: https://github.com/astral-sh/ty-pre-commit
+      rev: v0.0.99
+      hooks:
+        - id: ty
+          args: [--fix]
 
     - repo: https://github.com/pycqa/flake8
       rev: 7.5.0

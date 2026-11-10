@@ -22,16 +22,16 @@
 :url-python-wiki: https://docs.python.org/3
 :url-python-wiki-virtual-environments: {url-python-wiki}/tutorial/venv
 :url-python-wiki-virtual-environments: {url-python-wiki}/tutorial/venv
-:url-pre-commit-home: https://pre-commit.com
-:url-pre-commit: {url-pre-commit-home}
+:url-prek-home: https://prek.j178.dev
+:url-prek: {url-prek-home}
 :url-ruff-home: https://ruff.rs
 :url-ruff: {url-ruff-home}
 :url-mypy-home: https://mypy-lang.org
 :url-mypy: {url-mypy-home}
 :url-pypi-home: {_url-pypi}
 :url-pypi: https://pypi.org
-:url-ty-home: https://astral.sh/ty
-:url-ty: {url-ty-home}
+:url-ty-repo: {_url-github}/astral-sh/ty
+:url-ty: {url-ty-repo}
 :url-uv-home: https://astral.sh/uv
 :url-uv: {url-uv-home}
 :url-uv-wiki: https://docs.astral.sh/uv
@@ -57,8 +57,8 @@ image:https://img.shields.io/badge/%F0%9F%A5%95-typed__classproperties-blue[Pydo
 image:https://img.shields.io/pypi/v/typed_classproperties[PyPI Version,link={url-project-pypi}]
 image:https://img.shields.io/pypi/pyversions/typed_classproperties?logo=Python&logoColor=white&label=Python[Python Version,link={url-python-download}]
 image:{url-project-repository}/actions/workflows/check-build-publish.yaml/badge.svg[Tests Status,link={url-project-repository}/actions/workflows/check-build-publish.yaml]
-image:https://img.shields.io/badge/mypy-checked-%232EBB4E&label=mypy[mypy Status,link={url-mypy}]
-image:https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit[pre-commit Status,link={url-pre-commit}]
+image:https://raw.githubusercontent.com/j178/prek/main/docs/assets/badge.svg[prek Status,link={url-prek}]
+image:https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json[ruff,link={url-ty}]
 image:https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json[ruff,link={url-ruff}]
 image:https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json[uv,link={url-uv}]
 
@@ -127,10 +127,10 @@ This PEP, however, is still in draft and not yet accepted; therefore, not all ty
 
 While we will attempt to fix type annotation bugs in this project for alternative type-checkers, our focus is on the following officially supported type checkersfootnote:[The list of officially supported type checkers is subject to change between any minor version release]:
 
+* {labelled-url-ty}
 * {labelled-url-mypy}
-* {labelled-url-ty} &le; 0.0.59footnote:[Support for {labelled-url-ty} is capped to below https://github.com/astral-sh/ty/releases/tag/0.0.60[0.0.60], which began to find type-errors with the hacks used in this project]
 
-IMPORTANT: Patches to fix bugs in this project for alternative type-checkers are welcome and much appreciated!
+IMPORTANT: Patches to fix bugs in this project for alternative type-checkers are still welcome and much appreciated!
 
 == Tests
 
